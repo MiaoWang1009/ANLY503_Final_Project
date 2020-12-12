@@ -1,0 +1,96 @@
+---
+title: "ANLY503_HW7"
+author: "Miao Wang"
+date: "11/8/2020"
+output: html_document
+fig_width: 50 
+fig_height: 50
+---
+### Data cleaning
+```{r}
+library(readxl)
+library(plyr)
+library(igraph)
+```
+
+```{r}
+mig <- read_excel('State_to_State_Migrations_Table_2018.xls',col_names = TRUE, skip=6)
+mig <- mig[!is.na(mig$Alabama),]
+names(mig)[1] <- 'target'
+
+mig <- mig[-(1:2),c('target','New York','Texas','Ohio','Georgia')]
+mig$`New York` <- as.numeric(mig$`New York`)
+mig$Texas <- as.numeric(mig$Texas)
+mig$Ohio <- as.numeric(mig$Ohio)
+mig$Georgia <- as.numeric(mig$Georgia)
+
+NY <- mig[,c('target','New York')]
+TX <- mig[,c('target','Texas')]
+OH <- mig[,c('target','Ohio')]
+GA <- mig[,c('target','Georgia')]
+
+NY <- head(arrange(NY,desc(`New York`)), n = 10)
+TX <- head(arrange(TX,desc(Texas)), n = 10)
+OH <- head(arrange(OH,desc(Ohio)), n = 10)
+GA <- head(arrange(GA,desc(Georgia)), n = 10)
+
+names(NY)[2] <- 'count'
+names(TX)[2] <- 'count'
+names(OH)[2] <- 'count'
+names(GA)[2] <- 'count'
+
+NY$source <- 'New York'
+TX$source <- 'Texas'
+OH$source <- 'Ohio'
+GA$source <- 'Georgia'
+
+df <- rbind(NY, TX, OH, GA)
+df <- df[,c(3,1,2)]
+```
+
+### Draw graph
+```{r}
+library(tidyverse)
+sources <- df %>% distinct(source) %>% rename(label = source)
+targets <- df %>% distinct(target) %>% rename(label = target)
+nodes <- full_join(sources, targets, by='label')
+```
+
+```{r}
+network=graph_from_data_frame(d=df, vertices = nodes, directed=T)
+```
+
+
+```{r}
+E(network)$width = df$count/20000
+E(network)$length = 500
+E(network)$arrow.size= 0.5
+E(network)$curved = 0
+E(network)$edge.color = 'black'
+V(network)$label = V(network)$name
+V(network)$color = 'orange'
+V(network)$color[1:4] = 'red'
+```
+
+Four target state: New York, Texas, Ohio and Georgia.  
+
+The width of edge represents the level of people's migration for the past year.  
+
+```{r}
+plot(network, vertex.label.cex=0.8,
+     vertex.label.dist=-2.5, 
+     layout = layout.grid(network, width = 4),
+     edge.curved=0.26)
+
+```
+  
+From the graph, people from New York migrated most in 2018.  
+- The top 5 destinations for New York residents are New Jersey, Florida, Pennsylvania, California and Connecticut  
+- The top 5 destinations for Texas residents are California, Oklahoma, Colorado, Florida and Louisiana  
+- The top 5 destinations for Ohio residents are Florida, Kentucky, Indiana, California and Michigan  
+- The top 5 destinations for Georgia residents are Florida, Alabama, Tennessee, North Carolina and South Carolina  
+
+We can find that people usually choose their adjacent states and the states with more travelling options and working opportunities. Florida and California are very popular. Georgia sets a typical example that people from the south prefer staying at the south area or moving to the places where they could keep the original lifestyle and enjoy similar environment.  
+
+
+
