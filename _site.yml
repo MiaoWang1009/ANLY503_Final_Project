@@ -1,12 +1,14 @@
 name: 'Miao'
 output_dir: 'docs'
 navbar: 
-  title: '503 Por'
+  title: '503 Online Porfolio'
+'
   left: 
     - text: 'Home'
       href: 'index.html'
-    - text: 'hw6'
+    - text: 'HW6'
       href: 'geospatial.html'
     - text: 'flexdashboard'
       href: 'Final Project.html'
-    - text: ''
+    - text: 'HW7'
+      href: 'networks.html'
