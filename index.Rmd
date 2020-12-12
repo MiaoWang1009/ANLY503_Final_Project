@@ -1,0 +1,10 @@
+---
+title: "Index"
+author: "Miao Wang"
+date: "12/11/2020"
+output: html_document
+---
+
+Miao Wang
+
+Georgetown University
