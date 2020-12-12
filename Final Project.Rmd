@@ -1,0 +1,373 @@
+---
+title: "Analysis on the Swinging State - Georgia"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+---
+Georgia Nowadays
+======================================================================
+
+Column {.sidebar data-width=250}
+-------------------------------------
+### Introduction
+
+In the 2020 election, Georgia turned **blue** for the first time **since 1992**. 
+
+The website is built to the analyze Georgia's current situation from below subjects
+
+- **Migration**  
+    The network illustrtes the top 3 counties pepople went
+- **Poverty rate**  
+    Green represnets developed areas and Red represnets pover areas.
+- **Crime offenses**  
+    Word cloud and the bar chart show the number of offenses for the recent years.
+- **Economic development**   
+    Georgia fell behind more and more starting from 2000. Although Don Jones skyrocked since 2008, it did help.
+- **Election results**  
+    Developed areas having more migration are more liberal, and vice versa. Inequality between rich and poor enlarges. Since the orinal is too large to upload. Please find it seperatly.
+  
+Miao Wang  
+MS in Data Science and Analytics 
+Gerogetown University
+
+Row 
+-------------------------------------
+### The percentage DEM/REP won in the election.
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(readxl)
+library(ggplot2)
+library(maps)
+library(rgdal)
+library(igraph)
+library(reshape)
+library(plotly)
+library(tidyr)
+library(dplyr)
+library(wordcloud)
+library(RColorBrewer)
+library("tm")
+library("SnowballC")
+```
+
+```{r include=FALSE}
+poverty <- read_excel('PovertyEstimates.xls',sheet = 1, col_names = TRUE, skip=4)
+poverty <- poverty[,c('FIPStxt','Stabr','Area_name','PCTPOVALL_2018')]
+
+esp<- readOGR(dsn=".", layer="tl_2019_us_county")
+muni <- subset(esp, esp$STATEFP == "13")
+# fortify and merge: muni.df is used in ggplot
+
+muni@data$id <- rownames(muni@data)
+muni.df <- fortify(muni)
+
+library(plyr)
+library(dplyr)
+muni.df <- join(muni.df, muni@data, by="id")
+muni.df <- merge(muni.df, poverty, by.x="GEOID", by.y="FIPStxt", all.x=T, all.y=F)
+```
+
+```{r}
+mig_GA <- read_excel('county-to-county-2014-2018-ins-outs-nets-gross.xlsx',sheet = 'Georgia', col_names = TRUE, skip = 2)
+mig_GA$FIPStxtA <- paste(mig_GA$...1, mig_GA$...2,sep = '')
+mig_GA$FIPStxtB <- paste(mig_GA$...3, mig_GA$...4,sep = '')
+mig_GA$FIPStxtA <- substring(mig_GA$FIPStxtA,2,)
+mig_GA$FIPStxtB <- substring(mig_GA$FIPStxtB,2,)
+
+mig_GA <- mig_GA[,c('FIPStxtA','...6','FIPStxtB','...7','...8','Estimate...13')]
+colnames(mig_GA) <- c('FIPStxtA','CountyA','FIPStxtB','StateB','CountyB','BtoA')
+mig_GA <- mig_GA[which(mig_GA$StateB == 'Georgia'),]
+mig_GA <- mig_GA[!(is.na(mig_GA$BtoA)),]
+mig_GA$from <- ifelse(mig_GA$BtoA >=0, mig_GA$FIPStxtB, mig_GA$FIPStxtA)
+mig_GA$to <- ifelse(mig_GA$BtoA > 0, mig_GA$FIPStxtA, mig_GA$FIPStxtB)
+mig_GA$weight = abs(mig_GA$BtoA)
+
+GAnet <- mig_GA[,c('from','to','weight')]
+GAnet <- distinct(GAnet)
+```
+
+```{r}
+library(plyr)
+nodes <- ddply(muni.df, ~GEOID+Area_name, summarise, lon = mean(long), lat = mean(lat))
+```
+
+```{r}
+library(dplyr)
+GAnet <- GAnet %>%
+  arrange(desc(weight)) %>%
+  group_by(from) %>% slice(1:3)
+```
+
+```{r}
+g <- graph_from_data_frame(GAnet, vertices = nodes, directed=T)  
+
+nodes$weight <- degree(g)
+```
+
+```{r}
+edges_for_plot <- merge(GAnet, nodes, by.x = "from", by.y = "GEOID", all.x = T, all.y = F)
+names(edges_for_plot)[names(edges_for_plot) == 'lon'] <- 'x'
+names(edges_for_plot)[names(edges_for_plot) == 'lat'] <- 'y'
+edges_for_plot <- merge(edges_for_plot, nodes, by.x = "to", by.y = "GEOID", all.x = T, all.y = F)
+names(edges_for_plot)[names(edges_for_plot) == 'lon'] <- 'xend'
+names(edges_for_plot)[names(edges_for_plot) == 'lat'] <- 'yend'
+```
+
+```{r, R.options = list(width=350)}
+p2 <- ggplot(nodes) + 
+  geom_polygon(aes(x = long, y = lat, group = group, fill = PCTPOVALL_2018),
+               data = muni.df, color = "grey", size = 0.1) + 
+  coord_equal() + 
+  scale_fill_gradient2(midpoint = mean(muni.df$PCTPOVALL_2018), low = "#0BA925", mid ="white", 
+                       high = "red", space = "Lab", guide = "colourbar") + 
+  guides(fill = guide_colorbar(barheight = 10,)) +
+  labs(title="Georgia Poverty Rate 2018") +
+  scale_x_continuous(breaks = NULL) +
+  scale_y_continuous(breaks = NULL) +
+  geom_curve(aes(x = x, y = y, xend = xend, yend = yend), color = 'black',
+             data = edges_for_plot, curvature = 0.05, alpha = 0.5,
+             arrow = arrow(length = unit(0.3,'cm')), size = 0.25) +
+  theme(panel.background = element_blank(),
+        plot.title = element_text(hjust = 0.5, size = 10),
+        axis.title.x = element_blank(), axis.title.y = element_blank(),
+        text = element_text(size = 10), element_line(size = 0.4)) +
+  labs(fill = 'Poverty Rate (%)', size =0.5)
+
+#ggsave("Migration.png", plot = p2)
+p2
+```
+
+### The most number of offenses
+```{r}
+offense <- read.csv('NIBRS_OFFENSE.csv',header = T)
+offensetype <- read.csv('NIBRS_OFFENSE_TYPE.csv',header = T)
+locationtype <- read.csv('NIBRS_LOCATION_TYPE.csv',header = T)
+offense <- offense[,c('OFFENSE_TYPE_ID','LOCATION_ID')]
+offensetype <- offensetype[,c('OFFENSE_TYPE_ID','OFFENSE_NAME','OFFENSE_CATEGORY_NAME')]
+offense <- merge(offense,offensetype, by = 'OFFENSE_TYPE_ID', all.x=T, all.y=F)
+offense <- merge(offense,locationtype, by = 'LOCATION_ID', all.x=T, all.y=F)
+offense <- offense[,c('OFFENSE_NAME','OFFENSE_CATEGORY_NAME','LOCATION_NAME')]
+offense <- offense[,c('OFFENSE_NAME','OFFENSE_CATEGORY_NAME','LOCATION_NAME')]
+
+text <- offense$OFFENSE_NAME
+text <- gsub("https\\S*", "", text) 
+text <- gsub("@\\S*", "", text) 
+text <- gsub("amp", "", text) 
+text <- gsub("[\r\n]", "", text)
+text <- gsub("[[:punct:]]", "", text)
+
+docs <- Corpus(VectorSource(text))
+
+docs <- docs %>%
+  tm_map(removeNumbers) %>%
+  tm_map(removePunctuation) %>%
+  tm_map(stripWhitespace)
+docs <- tm_map(docs, content_transformer(tolower))
+docs <- tm_map(docs, removeWords, stopwords("english"))
+
+dtm <- TermDocumentMatrix(docs) 
+matrix <- as.matrix(dtm) 
+words <- sort(rowSums(matrix),decreasing=TRUE) 
+worddf <- data.frame(word = names(words),freq=words)
+```
+
+
+```{r, echo=FALSE}
+layout(matrix(c(1, 2), nrow=2), heights=c(1, 9))
+par(mar=rep(0, 4))
+plot.new()
+text(x=0.5, y=0.5, "This graph shows the frequency of each offenses type.")
+wordcloud(words = worddf$word, freq = worddf$freq, min.freq = 1, 
+          max.words=200, random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Dark2"))
+```
+
+Row
+-------------------------------------
+### Counties which endures less poverty has more migration.
+
+```{r,echo=FALSE}
+offense_name <- data.frame(table(offense$OFFENSE_NAME))
+offense_name <- offense_name %>% filter(Freq > 10) 
+colnames(offense_name) <- c('type','Number')
+offense_name <- offense_name %>% arrange(desc(Number))
+```
+
+```{r, R.options = list(width=450)}
+ggplotly(ggplot(data=offense_name[1:20,], aes(reorder(type, Number),Number)) +
+  geom_bar(stat="identity", fill = '#f2cd83') + 
+  coord_flip() +
+  theme_minimal() + 
+  theme(plot.title = element_text(hjust = 0, size=10),
+        axis.title.y = element_text(hjust = 0.5, size = 5)) +
+  labs(x = '', y = 'Number of Cases', title = 'Top 20 Offense Types in Georgia in 2019'),
+  tooltip = c("Number"))
+```
+
+GA vs US Level
+======================================================================
+Row 
+-----------------------------------------------------------------------
+### Blues counties are distributed around the populated areas.
+```{r}
+vote <- read.csv('nanda_voting_county_2004-2018_01P.csv', header = TRUE)
+vote <- vote[,c('stcofips','year','pres_dem_ratio','pres_rep_ratio')]
+vote$stcofips <- sprintf('%05d', vote$stcofips)
+vote <- vote[which(substring(vote$stcofips,1,2) == 13),]
+vote <- vote[rowSums(is.na(vote)) == 0,]
+vote$vote_rate <- ifelse(vote$pres_dem_ratio > vote$pres_rep_ratio, vote$pres_dem_ratio,  -vote$pres_rep_ratio)
+vote$win <- abs(vote$vote_rate)
+```
+
+```{r}
+vote <- merge(vote, nodes, by.x="stcofips",by.y="GEOID", all.x=T, all.y=F)
+vote <- vote[, c("stcofips","year","Area_name", "vote_rate","win")]
+colnames(vote) <- c("stcofips","year","county", "vote_rate","win")
+
+vote01 <- read.csv('president_county_2020.csv', header = T) 
+vote02 <- read.csv('president_county_candidate_2020.csv', header = T) 
+vote01 <- vote01 %>% filter(state =='Georgia')
+vote02 <- vote02 %>% filter(won=='True') %>% filter(state =='Georgia')
+vote01 <- merge(vote01, vote02, by="county", all.x=T, all.y=F)
+vote01$win <- vote01$total_votes.y/vote01$total_votes.x
+vote01$year <- '2020'
+vote01$vote_rate <- ifelse(vote01$party=='REP', -vote01$win, vote01$win)
+vote01 <- merge(vote01, nodes, by.x="county", by.y="Area_name",all.y=T, all.x=F)
+vote01 <- vote01[, c("GEOID","year","county","vote_rate","win")]
+colnames(vote01) <- c("stcofips","year","county", "vote_rate","win")
+
+vote <- rbind(vote,vote01)
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+
+mergemap <- function(year){
+  year=as.numeric(year)
+  a <- merge(muni.df,vote[which(vote$year==year),], by.x="GEOID", by.y="stcofips", all.x=T, all.y=F)
+}
+df <- mergemap(2012)
+```
+
+```{r}
+votemap <- function(df){
+  maptitle <- paste('Georgia Election Results', df$year[1])
+  ggplot(data=df, aes(x=long, y=lat, group=group, label=county, label2=win, label3=year)) +
+  geom_polygon(aes(fill= vote_rate)) + # draw polygons
+  geom_path(color="grey", size=0.1) +  # draw boundaries
+  coord_equal() + 
+  scale_fill_gradient2(midpoint = 0, low = "#b5090f", mid ="white", 
+                       high = "#06479c", space = "Lab", na.value = "grey50") + #, guide = "colourbar") + 
+  #guides(fill = guide_colorbar(barheight = 10)) +
+  labs(title=maptitle) +
+  scale_x_continuous(breaks = NULL) +
+  scale_y_continuous(breaks = NULL) +
+  theme(panel.background = element_blank(), legend.title = element_blank(), legend.position="none",
+        axis.title.x = element_blank(), axis.title.y = element_blank(),
+        text = element_text(size = 10), element_line(size = 0.4), plot.title = element_text(hjust = 0.5))
+}
+```
+
+```{r}
+ax <- list(title = "", zeroline = FALSE, showline = FALSE, showticklabels = FALSE, 
+           showgrid = FALSE, ticks = "", showticklabels =FALSE)
+vote2012 <- mergemap(2012)
+map2012 <- votemap(vote2012)
+#map2012 <- ggplotly(votemap(vote2012)) %>% layout(xaxis = ax, yaxis = ax)
+#ggsave("VoteMap2012.png", plot = map2012)
+```
+
+![unchanged image](VoteMap2012.png)
+
+### REP lost several blue counties in the southwest in 2016.
+
+```{r}
+library()
+vote2016 <- mergemap(2016)
+#map2016 <- ggplotly(votemap(vote2016)) %>% layout(xaxis = ax, yaxis = ax)
+map2016 <- votemap(vote2016)
+#ggsave("VoteMap2016.png", plot = map2016)
+
+```
+![unchanged image](VoteMap2016.png)
+
+### The blue counties took larger advantages in 2020.
+
+```{r}
+vote2020 <- mergemap(2020)
+#map2020 <- ggplotly(votemap(vote2020)) %>% layout(xaxis = ax, yaxis = ax)
+map2020 <- votemap(vote2020)
+#ggsave("VoteMap2020.png", plot = map2020)
+```
+![unchanged image](VoteMap2020.png)
+
+Row {data-height=500}
+-------------------------------------
+
+### USA Economic
+
+```{r, echo=FALSE}
+dji <- read.csv('DJI.csv',header = T)
+dji$Date <- as.Date(dji$Date)
+p1 <- ggplot(data = dji,mapping = aes(x = Date, y = Close, group = 1)) +
+  geom_point(size=0.01) +
+  geom_line(size =0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank(), 
+        plot.title = element_text(hjust = 0.5, size = 10)) +
+  labs(title="Don Jones Index 2000-2020")   
+  
+ggplotly(p1, tooltip = c("x","y"), dynamicTicks = T) %>%
+  rangeslider(borderwidth = 1, start = dji$Date[5], end = dji$Date[5030])
+```
+
+### Georgia fell behind the US average level
+
+```{r}
+PerIncome <- read.csv('CAINC30__ALL_AREAS_1969_2019.csv',header = T)
+```
+
+```{r}
+PerIncome$Description <-trimws(PerIncome$Description)
+
+piga <- PerIncome[,c(2,7,9:59)] 
+piga <- piga[which(piga$GeoName == 'Georgia'| piga$GeoName == 'United States'),]
+
+piga <- piga[which(piga$Description == 'Per capita net earnings 4/'| piga$Description =='Per capita personal income 4/'), ]
+
+piga <- melt(piga, id=c("GeoName","Description"))
+colnames(piga) <- c("State","Category","year","amount")
+
+piga$year <- substring(piga$year,2,)
+piga$year <- as.numeric(as.character(piga$year))
+
+piga$amount <- as.numeric(as.character(piga$amount))
+piga$amount <- piga$amount/1000
+piga$Category[piga$Category == 'Per capita personal income 4/'] <- 'Per Capita Personal Income'
+piga$Category[piga$Category == 'Per capita net earnings 4/'] <- 'Per Capita Net Earnings'
+
+pigadiff <- spread(piga, State, amount)
+```
+
+```{r}
+pigadiff$diff <- pigadiff$`United States` - pigadiff$Georgia
+```
+
+```{r}
+p6 <- ggplot(pigadiff, aes(x = year, y = diff)) + 
+  geom_line(aes(color = Category), size =1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(size = 8),
+        axis.title.y = element_text(size = 9), legend.title = element_blank(),
+        legend.position="top", plot.title = element_text(hjust = 0.5,size=10)) +
+  labs(y = 'Thousands Dollars',
+       title="Amount that Georgia Fell behind the US Average Level 1969-2019") +
+  scale_color_manual(values = c("#00AFBB", "#E7B800"))
+
+gg2 <- ggplotly(p6, dynamicTicks = T) %>%
+  rangeslider(borderwidth = 1, start = pigadiff$year[30], end = pigadiff$year[49]) %>%
+  layout(legend = list(orientation = "h", x = 0.5, y =0.9, font = list(size = 9)))
+
+gg2
+```
