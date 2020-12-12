@@ -5,7 +5,8 @@ navbar:
   left: 
     - text: 'Home'
       href: 'index.html'
-    - text: 'HW4'
-      href: 'hw4.html'
+    - text: 'hw6'
+      href: 'geospatial.html'
     - text: 'flexdashboard'
       href: 'https://miaowang1009.github.io/ANLY503_Final_Project/'
+    - text: ''
